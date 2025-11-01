@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Görsel Üretici | Gemini</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        heading: ['Poppins', 'sans-serif']
+                    },
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            margin: auto;
+            display: block;
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 8px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        .loader {
+            border-top-color: #a11300;
+            -webkit-animation: spinner 1.5s linear infinite;
+            animation: spinner 1.5s linear infinite;
+        }
+        @-webkit-keyframes spinner {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+        @keyframes spinner {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .card-glass {
+            background: rgba(22, 21, 21, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        .image-card {
+            transition: all 0.3s ease;
+        }
+        .image-card:hover {
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen font-sans">
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-primary-600 to-blue-700 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-8">
+            <div class="flex flex-col items-center justify-center">
+                <div class="flex items-center mb-3">
+                    <i class="fas fa-paint-brush text-3xl mr-3 text-primary-100"></i>
+                    <h1 class="text-4xl font-bold font-heading bg-clip-text text-transparent bg-gradient-to-r from-white to-primary-100">Ai İmage</h1>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-10 relative z-10">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="mb-6 p-4 rounded-lg shadow-md flex items-center {% if category == 'error' %}bg-red-50 text-red-700 border-l-4 border-red-500{% else %}bg-green-50 text-green-700 border-l-4 border-green-500{% endif %}">
+                        <i class="{% if category == 'error' %}fas fa-exclamation-circle text-red-500{% else %}fas fa-check-circle text-green-500{% endif %} mr-3 text-xl"></i>
+                        <p>{{ message }}</p>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left Column - Prompt Form -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-xl shadow-xl p-6 mb-8 border border-gray-100">
+                    <div class="mb-4">
+                        <h2 class="text-2xl font-bold text-gray-800 font-heading mb-2">Görsel Oluştur</h2>
+                        <p class="text-gray-600 text-sm">Yaratmak istediğiniz görseli açıklayın</p>
+                    </div>
+                    <form action="{{ url_for('generate') }}" method="post" id="generateForm" class="space-y-4">
+                        <div>
+                            <label for="prompt" class="block text-gray-700 font-medium mb-2 text-sm">Görsel İstemi</label>
+                            <textarea 
+                                id="prompt" 
+                                name="prompt" 
+                                class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200 resize-none"
+                                rows="4" 
+                                placeholder="Örnek: Gün batımında göl kenarında oturan bir kişi, dağlar manzaralı, yüksek çözünürlüklü, gerçekçi" 
+                                required
+                            ></textarea>
+                        </div>
+                        
+                        <div class="pt-2">
+                            <button 
+                                type="submit"
+                                id="generateBtn" 
+                                class="w-full px-6 py-3 bg-gradient-to-r from-primary-600 to-blue-600 text-white rounded-lg hover:from-primary-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200 font-medium flex items-center justify-center"
+                            >
+                                <i class="fas fa-magic mr-2"></i>
+                                <span>Görsel Oluştur</span>
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <!-- Loading Spinner (Hidden by default) -->
+                    <div id="loadingSpinner" class="hidden mt-6 bg-blue-50 rounded-lg p-4 flex items-center justify-center">
+                        <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-10 w-10"></div>
+                        <p class="ml-3 text-primary-600">Görsel oluşturuluyor...</p>
+                    </div>
+                    
+                    <!-- Tips -->
+                    <div class="mt-6 bg-blue-50 rounded-lg p-4">
+                        <h3 class="font-medium text-blue-800 mb-2 text-sm">İpuçları</h3>
+                        <ul class="text-blue-700 text-xs space-y-2">
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle mt-1 mr-2 text-blue-500"></i>
+                                <span>Detaylı açıklamalar daha iyi sonuçlar verir</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle mt-1 mr-2 text-blue-500"></i>
+                                <span>Istediğiniz stil, ışık ve renkleri belirtin</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle mt-1 mr-2 text-blue-500"></i>
+                                <span>"Yüksek çözünürlüklü", "4K", "detaylı" gibi kalite belirteçleri ekleyin</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Column - Image Gallery -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-xl shadow-xl p-6 border border-gray-100">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold text-gray-800 font-heading">Galeri</h2>
+                        <span class="bg-primary-100 text-primary-800 py-1 px-3 rounded-full text-xs font-medium">
+                            {{ images|length }} Görsel
+                        </span>
+                    </div>
+                    
+                    {% if images %}
+                        <div class="image-grid">
+                            {% for image in images %}
+                                <div class="image-card bg-white rounded-xl overflow-hidden shadow-md border border-gray-100 hover:shadow-xl" onclick="openModal('{{ image }}')">
+                                    <div class="relative aspect-w-16 aspect-h-9">
+                                        <img 
+                                            src="{{ url_for('static', filename='images/' + image) }}" 
+                                            alt="Oluşturulan görsel" 
+                                            class="w-full h-56 object-cover"
+                                            loading="lazy"
+                                        >
+                                    </div>
+                                    <div class="p-3 bg-gray-50 text-xs text-gray-500 truncate flex items-center">
+                                        <i class="fas fa-image text-primary-400 mr-2"></i>
+                                        <span class="truncate">{{ image }}</span>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="bg-gray-50 rounded-lg p-8 text-center">
+                            <div class="bg-gray-100 w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4">
+                                <i class="fas fa-image text-gray-400 text-2xl"></i>
+                            </div>
+                            <h3 class="text-gray-600 font-medium mb-2">Henüz Görsel Yok</h3>
+                            <p class="text-gray-500 text-sm max-w-md mx-auto">"Görsel Oluştur" düğmesine tıklayarak başlayın.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-gray-400 pt-12 pb-8 mt-16">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center border-b border-gray-800 pb-8 mb-8">
+                <div class="mb-6 md:mb-0">
+                    <h2 class="text-2xl font-bold text-white mb-2 font-heading"></h2>
+                    <p class="text-gray-400 text-sm max-w-md"></p>
+                </div>
+            </div>
+            <div class="text-center text-sm">
+                <p>&copy; {{ now.year }} Gemini AI Görsel Üretici. Tüm hakları saklıdır.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Modal for full-size image view -->
+    <div id="imageModal" class="modal flex items-center justify-center p-4" onclick="closeModal()">
+        <div class="relative" onclick="event.stopPropagation();">
+            <img id="modalImage" class="modal-content rounded-lg">
+            <button onclick="closeModal()" class="absolute top-4 right-4 bg-black bg-opacity-50 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-70 transition-colors">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        // Sayfa yüklendiğinde modalı gizle
+        document.addEventListener('DOMContentLoaded', function() {
+            closeModal();
+        });
+        
+        // Image modal functionality
+        function openModal(imageName) {
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImage');
+            modal.style.display = "flex";
+            modalImg.src = "{{ url_for('static', filename='images/') }}" + imageName;
+        }
+
+        function closeModal() {
+            document.getElementById('imageModal').style.display = "none";
+        }
+
+        // Loading spinner
+        document.getElementById('generateForm').addEventListener('submit', function() {
+            document.getElementById('generateBtn').disabled = true;
+            document.getElementById('generateBtn').classList.add('opacity-75');
+            document.getElementById('loadingSpinner').classList.remove('hidden');
+        });
+
+        // Close modal when ESC key is pressed
+        document.addEventListener('keydown', function(event) {
+            if (event.key === "Escape") {
+                closeModal();
+            }
+        });
+        
+        // Modal dışındaki alana tıklandığında kapat
+        document.getElementById('imageModal').addEventListener('click', function(event) {
+            if (event.target === this) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html> 
